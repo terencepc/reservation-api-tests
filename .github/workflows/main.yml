@@ -38,6 +38,14 @@ jobs:
         with:
           repository: dongtpc/reservation
           path: reservation-backend
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Debug after checkout
+        run: |
+          echo "Listing root:"
+          ls -la
+          echo "Listing backend folder:"
+          ls -la reservation-backend || echo "Backend folder missing"
 
       - name: Setup Node
         uses: actions/setup-node@v3
