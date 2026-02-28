@@ -2,23 +2,49 @@ name: Karate API Tests CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout API Tests Repo
+        uses: actions/checkout@v3
 
-      - name: Set up JDK 17
+      # 👇 Checkout backend repo
+      - name: Checkout Backend Repo
+        uses: actions/checkout@v3
+        with:
+          repository: dongtpc/reservation-backend
+          path: backend
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 👇 Setup Node
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          npm install
+
+      - name: Start Backend
+        run: |
+          cd backend
+          npm start &
+          sleep 10
+
+      # 👇 Setup Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: 17
 
       - name: Build with Maven
         run: mvn clean test
