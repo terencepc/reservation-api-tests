@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: dongtpc/reservation
-          path: reservation-backend
+          path: reservation
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Debug after checkout
@@ -53,19 +53,19 @@ jobs:
           node-version: 18
 
       - name: Install backend dependencies
-        working-directory: reservation-backend/reservation-backend
+        working-directory: reservation/reservation-backend
         run: npm install
 
       - name: Generate Prisma Client
-        working-directory: reservation-backend/reservation-backend
-        run: npx prisma generate
-
+        working-directory: reservation/reservation-backend
+        run: npx prisma generate --schema=../prisma/schema.prisma
+      
       - name: Run Prisma migrations
-        working-directory: reservation-backend/reservation-backend
-        run: npx prisma migrate deploy
+        working-directory: reservation/reservation-backend
+        run: npx prisma migrate deploy --schema=../prisma/schema.prisma
 
       - name: Start backend
-        working-directory: reservation-backend/reservation-backend
+        working-directory: reservation/reservation-backend
         run: |
           npm start > backend.log 2>&1 &
 
@@ -79,7 +79,7 @@ jobs:
       
           echo "Backend failed to start"
           echo "==== BACKEND LOGS ===="
-          cat reservation-backend/backend.log
+          cat reservation/reservation-backend/backend.log
           exit 1
 
       - name: Show backend logs
@@ -90,8 +90,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-
-
 
       - name: Run Karate tests
         run: mvn test
