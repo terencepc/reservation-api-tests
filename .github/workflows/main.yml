@@ -95,7 +95,7 @@ jobs:
       
       - name: Check admin table
         run: |
-          psql $DATABASE_URL -c 'SELECT * FROM "admin";'
+          psql $DATABASE_URL -c 'SELECT * FROM "Admin";'
           
       - name: Run Karate tests
         run: mvn test
