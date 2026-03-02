@@ -63,6 +63,10 @@ jobs:
       - name: Run Prisma migrations
         working-directory: reservation/reservation-backend
         run: npx prisma migrate deploy --schema=../prisma/schema.prisma
+      
+      - name: Run Prisma Seed
+        working-directory: reservation/reservation-backend
+        run: npx prisma db seed
 
       - name: Start backend
         working-directory: reservation/reservation-backend
@@ -88,6 +92,10 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-
+      
+      - name: Check admin table
+        run: |
+          psql $DATABASE_URL -c 'SELECT * FROM "admin";'
+          
       - name: Run Karate tests
         run: mvn test
