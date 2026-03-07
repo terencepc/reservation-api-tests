@@ -90,7 +90,11 @@ jobs:
           echo "==== BACKEND LOGS ===="
           cat reservation/reservation-backend/backend.log
           exit 1
-
+          
+      - name: Show backend logs
+        if: failure()
+        run: cat reservation/reservation-backend/backend.log
+      
       - name: Setup Java
         uses: actions/setup-java@v3
         with:
