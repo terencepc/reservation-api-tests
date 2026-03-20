@@ -9,24 +9,80 @@
   <artifactId>reservation-api-tests</artifactId>
   <version>1.0-SNAPSHOT</version>
 
+  <!-- ============================================================
+       COMPILER PROPERTIES
+       - Java 17 required for Karate 1.4.x
+       - aspectj.version pinned here so it's reused in surefire config
+  ============================================================ -->
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <aspectj.version>1.9.20.1</aspectj.version>
+  </properties>
+
+  <!-- ============================================================
+       DEPENDENCIES
+  ============================================================ -->
   <dependencies>
+
+    <!-- Karate: BDD API testing framework with built-in JUnit5 runner -->
     <dependency>
       <groupId>com.intuit.karate</groupId>
       <artifactId>karate-junit5</artifactId>
       <version>1.4.1</version>
       <scope>test</scope>
     </dependency>
+
+    <!-- Allure JUnit5: captures test results into allure-results/ folder -->
+    <dependency>
+      <groupId>io.qameta.allure</groupId>
+      <artifactId>allure-junit5</artifactId>
+      <version>2.24.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- AspectJ Weaver: required by Allure to intercept JUnit5 lifecycle events -->
+    <dependency>
+      <groupId>org.aspectj</groupId>
+      <artifactId>aspectjweaver</artifactId>
+      <version>${aspectj.version}</version>
+      <scope>test</scope>
+    </dependency>
+
   </dependencies>
 
+  <!-- ============================================================
+       BUILD PLUGINS
+  ============================================================ -->
   <build>
     <testSourceDirectory>src/test/java</testSourceDirectory>
+
     <plugins>
+
+      <!-- Maven Surefire: runs JUnit5 tests via mvn test
+           argLine loads the AspectJ agent so Allure can hook into test events -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+        <configuration>
+          <argLine>
+            -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
+          </argLine>
+        </configuration>
       </plugin>
+
+      <!-- Allure Maven: generates HTML report from allure-results/
+           Usage locally: mvn allure:serve   (opens browser)
+                          mvn allure:report  (writes to target/site/allure-maven-plugin/) -->
+      <plugin>
+        <groupId>io.qameta.allure</groupId>
+        <artifactId>allure-maven</artifactId>
+        <version>2.12.0</version>
+      </plugin>
+
     </plugins>
+
   </build>
 
 </project>
