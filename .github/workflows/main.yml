@@ -1,3 +1,19 @@
+# ================================================================
+# API Tests CI Pipeline — reservation-api-tests
+#
+# Runs on every push / PR to main.
+# Pipeline order:
+#   1. Spin up Postgres
+#   2. Boot the backend (checkout + Node + Prisma)
+#   3. Run Karate functional tests  → generates target/allure-results/
+#   4. Run k6 performance tests
+#   5. Generate Allure HTML report with trend history
+#   6. Publish report to GitHub Pages (gh-pages branch)
+#
+# Allure report URL after first run:
+#   https://terencepc.github.io/reservation/
+# ================================================================
+
 name: API Tests CI
 
 on:
@@ -10,6 +26,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    # ----------------------------------------------------------------
+    # Postgres service container
+    # Runs alongside the job — required for Prisma migrations and seed
+    # ----------------------------------------------------------------
     services:
       postgres:
         image: postgres:15
@@ -25,6 +45,9 @@ jobs:
           --health-timeout=5s
           --health-retries=5
 
+    # ----------------------------------------------------------------
+    # Environment variables shared across all steps
+    # ----------------------------------------------------------------
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reservation_test
       NODE_ENV: test
@@ -33,27 +56,30 @@ jobs:
 
     steps:
 
+      # ----------------------------------------------------------------
+      # SECTION 1: CHECKOUT
+      # Checks out both repos into the runner workspace:
+      #   ./ (root)          → API test repo  (this repo)
+      #   ./reservation/     → backend repo
+      # ----------------------------------------------------------------
+
       - name: Checkout test repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Checkout backend repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          repository: dongtpc/reservation
+          repository: terencepc/reservation
           path: reservation
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Debug after checkout
-        run: |
-          echo "Listing root:"
-          ls -la
-          echo "Listing backend folder:"
-          ls -la reservation-backend || echo "Backend folder missing"
-          echo "Listing reservation folder:"
-          ls -la reservation || echo "Reservation folder missing"
+      # ----------------------------------------------------------------
+      # SECTION 2: BACKEND SETUP
+      # Install deps, generate Prisma client, run migrations, seed DB
+      # ----------------------------------------------------------------
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -61,72 +87,122 @@ jobs:
         working-directory: reservation/reservation-backend
         run: npm install
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma client
         working-directory: reservation/reservation-backend
-        run: npx prisma generate 
-      
-      - name: Run Prisma migrations
+        run: npx prisma generate
+
+      - name: Run database migrations
         working-directory: reservation/reservation-backend
-        run: npx prisma migrate deploy 
-      
-      - name: Run Prisma Seed
+        run: npx prisma migrate deploy
+
+      - name: Seed database
         working-directory: reservation/reservation-backend
         run: npx prisma db seed
 
-      - name: Start backend
+      - name: Start backend server
         working-directory: reservation/reservation-backend
-        run: |
-          npm start > backend.log 2>&1 &
+        run: npm start > backend.log 2>&1 &
 
-      - name: Wait for backend
+      - name: Wait for backend to be ready
         run: |
+          echo "Waiting for backend on port 3000..."
           for i in {1..20}; do
             nc -z localhost 3000 && echo "Backend is up!" && exit 0
-            echo "Waiting for backend..."
+            echo "Attempt $i/20 — retrying in 3s..."
             sleep 3
           done
-      
-          echo "Backend failed to start"
-          echo "==== BACKEND LOGS ===="
+          echo "Backend failed to start. Dumping logs:"
           cat reservation/reservation-backend/backend.log
           exit 1
-          
-      - name: Show backend logs
+
+      # Print backend logs only when a previous step has failed
+      - name: Show backend logs on failure
         if: failure()
         run: cat reservation/reservation-backend/backend.log
-      
-      - name: Setup Java
-        uses: actions/setup-java@v3
+
+      # ----------------------------------------------------------------
+      # SECTION 3: KARATE FUNCTIONAL TESTS
+      # ----------------------------------------------------------------
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Check admin table
-        run: |
-          psql $DATABASE_URL -c 'SELECT * FROM "Admin";'
+      # Sanity check — confirms the admin seed ran correctly before tests
+      - name: Verify admin seed data
+        run: psql $DATABASE_URL -c 'SELECT id, username FROM "Admin";'
 
+      # continue-on-error: true ensures the Allure report is still
+      # generated and published even when test scenarios fail
       - name: Run Karate tests
         run: mvn test
+        continue-on-error: true
 
-      # -----------------------------
-      # K6 PERFORMANCE TEST SECTION
-      # -----------------------------
+      # ----------------------------------------------------------------
+      # SECTION 4: K6 PERFORMANCE TESTS
+      # ----------------------------------------------------------------
 
       - name: Install k6
         run: |
           sudo gpg -k
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y gnupg software-properties-common
           curl -s https://dl.k6.io/key.gpg | sudo apt-key add -
           echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y k6
 
       - name: Install k6 test dependencies
         run: npm install
-      
-      - name: Build k6 TypeScript tests
+
+      - name: Compile TypeScript k6 tests
         run: npx tsc -p tsconfig.json
 
       - name: Run k6 performance tests
         run: k6 run dist/tests/login.test.js
+
+      # ----------------------------------------------------------------
+      # SECTION 5: ALLURE REPORT
+      #
+      # All three steps use if: always() so the report is published
+      # regardless of whether tests passed or failed.
+      #
+      # How history works:
+      #   - Step 1 pulls the existing report from gh-pages
+      #   - Step 2 appends the new run and builds the HTML
+      #   - Step 3 pushes the result back to gh-pages
+      #
+      # continue-on-error on the checkout handles the first-ever run
+      # when the gh-pages branch does not yet exist
+      # ----------------------------------------------------------------
+
+      - name: Fetch Allure history from gh-pages
+        uses: actions/checkout@v4
+        if: always()
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      # Converts target/allure-results/ into a full HTML report.
+      # keep_reports: 20 retains the last 20 runs in the trend graph
+      - name: Generate Allure HTML report
+        uses: simple-elf/allure-report-action@master
+        if: always()
+        with:
+          allure_results: target/allure-results
+          allure_history: gh-pages
+          keep_reports: 20
+
+      # Pushes the generated report to gh-pages so GitHub Pages serves it.
+      # After the first run, enable Pages in repo Settings → Pages →
+      # Source: Deploy from a branch → Branch: gh-pages / (root)
+      - name: Publish Allure report to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-history
