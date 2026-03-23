@@ -140,6 +140,14 @@ jobs:
         run: mvn test
         continue-on-error: true
 
+      - name: Debug — list allure-results
+        if: always()
+        run: |
+          echo "=== target/ contents ==="
+          ls -la target/ || echo "target/ does not exist"
+          echo "=== allure-results contents ==="
+          ls -la target/allure-results/ || echo "allure-results/ does not exist"
+    
       # ----------------------------------------------------------------
       # SECTION 4: K6 PERFORMANCE TESTS
       # ----------------------------------------------------------------
