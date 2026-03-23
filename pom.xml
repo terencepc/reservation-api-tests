@@ -59,22 +59,47 @@
 
     <plugins>
 
-      <!-- Maven Surefire: runs JUnit5 tests via mvn test
-           argLine loads the AspectJ agent so Allure can hook into test events -->
+      <!-- Copies aspectjweaver jar to target/agents/ before tests run.
+           This guarantees a known, consistent path in both local and CI environments -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.6.1</version>
+        <executions>
+          <execution>
+            <id>copy-aspectjweaver</id>
+            <phase>process-test-resources</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>org.aspectj</groupId>
+                  <artifactId>aspectjweaver</artifactId>
+                  <version>${aspectj.version}</version>
+                  <outputDirectory>${project.build.directory}/agents</outputDirectory>
+                  <destFileName>aspectjweaver.jar</destFileName>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Surefire now points to the copied jar at a guaranteed path -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
         <configuration>
           <argLine>
-            -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
+            -javaagent:${project.build.directory}/agents/aspectjweaver.jar
           </argLine>
         </configuration>
       </plugin>
 
-      <!-- Allure Maven: generates HTML report from allure-results/
-           Usage locally: mvn allure:serve   (opens browser)
-                          mvn allure:report  (writes to target/site/allure-maven-plugin/) -->
+      <!-- Allure Maven: mvn allure:serve or mvn allure:report -->
       <plugin>
         <groupId>io.qameta.allure</groupId>
         <artifactId>allure-maven</artifactId>
@@ -82,7 +107,6 @@
       </plugin>
 
     </plugins>
-
   </build>
 
 </project>
