@@ -96,6 +96,12 @@
           <argLine>
             -javaagent:${project.build.directory}/agents/aspectjweaver.jar
           </argLine>
+          <!-- Explicitly tells Allure where to write result JSON files -->
+          <systemPropertyVariables>
+            <allure.results.directory>
+              ${project.build.directory}/allure-results
+            </allure.results.directory>
+          </systemPropertyVariables>
         </configuration>
       </plugin>
 
